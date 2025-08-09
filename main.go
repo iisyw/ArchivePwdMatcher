@@ -80,7 +80,7 @@ func main() {
 		} else {
 			// 失败了，也清理行并打印失败信息
 			clearLine()
-			display.PrintWarning(fmt.Sprintf("%s %s -> 未找到密码", progressPrefix, truncatedName))
+			display.PrintWarning(fmt.Sprintf("%s %s -> 未找到密码或无需密码", progressPrefix, truncatedName))
 		}
 	}
 	
