@@ -4,3 +4,7 @@
 
 1. Normal Update
 2. 修改未找到密码改为未找到密码或无需密码，增加README文档
+
+## 2025/08/10
+
+1. docs(md): 修改README文档

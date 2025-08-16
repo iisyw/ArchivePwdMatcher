@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	passwordsFile   = "passwords.txt"
-	resultDir       = "result"
-	processTimeout  = 500 * time.Millisecond // 快速模式下的超时时间
+	passwordsFile  = "passwords.txt"
+	resultDir      = "result"
+	processTimeout = 500 * time.Millisecond // 快速模式下的超时时间
 )
 
 // Result 用于保存破解结果
@@ -27,26 +27,61 @@ type Result struct {
 }
 
 func main() {
-	// 1. 打印标题
+	// 1. 打印通用标题
 	display.PrintDivider()
-	display.PrintCenteredTitle("Archive Password Matcher - Go Version")
+	display.PrintCenteredTitle("Archive Tools - Go Version")
 	display.PrintDivider()
 	display.PrintEmptyLine()
 
-	// 2. 获取用户输入
-	targetPath := getUserInput()
+	// 2. 首先获取用户需要处理的路径
+	targetPath := getUserInput("请输入要处理的压缩包或文件夹路径 (留空使用当前目录): ")
 
-	// 3. 加载密码和扫描文件
+	// 3. 显示主菜单并获取选择
+	choice := showMainMenu()
+
+	// 4. 根据选择执行不同的功能
+	switch choice {
+	case "1":
+		runPasswordMatcher(targetPath)
+	case "2":
+		runExtractor(targetPath)
+	default:
+		display.PrintWarning("无效的选择，程序退出。")
+	}
+
+	display.PrintEmptyLine()
+	display.PrintInfo("感谢使用，程序已退出。")
+}
+
+// showMainMenu 显示主菜单并返回用户的选择
+func showMainMenu() string {
+	display.PrintSection("主菜单")
+	display.PrintInfo("1. 密码匹配器 (批量扫描并使用密码本匹配压缩包密码)")
+	display.PrintInfo("2. 批量解压器 (批量扫描并使用密码本解压压缩包)")
+	display.PrintSectionEnd()
+	display.PrintEmptyLine()
+
+	display.PrintInputPrompt("请输入功能选项 [1-2]: ")
+	reader := bufio.NewReader(os.Stdin)
+	choice, _ := reader.ReadString('\n')
+	return strings.TrimSpace(choice)
+}
+
+// runPasswordMatcher 运行密码匹配功能的完整流程
+func runPasswordMatcher(targetPath string) {
+	display.PrintHeader("--- 密码匹配器 ---")
+
+	// 1. 加载密码和扫描文件
 	passwords, archives, err := prepareTask(targetPath)
 	if err != nil {
 		display.PrintError(fmt.Sprintf("任务准备失败: %v", err))
 		return
 	}
 
-	// 4. 显示摘要并获取用户选择的模式
+	// 2. 显示摘要并获取用户选择的模式
 	mode := showSummaryAndGetMode(targetPath, passwords, archives)
 
-	// 5. 创建结果文件
+	// 3. 创建结果文件
 	resultFile, err := setupResultFile()
 	if err != nil {
 		display.PrintError(fmt.Sprintf("无法创建结果文件: %v", err))
@@ -54,36 +89,30 @@ func main() {
 	}
 	defer resultFile.Close()
 
-	// 6. 开始处理
+	// 4. 开始处理
 	display.PrintSection("开始匹配")
 	ctx := context.Background()
 	var foundResult bool
 
 	for i, archivePath := range archives {
 		fileName := filepath.Base(archivePath)
-		
-		// 初始进度显示
 		progressPrefix := fmt.Sprintf("[%03d/%03d]", i+1, len(archives))
 		truncatedName := truncateString(fileName, 40)
-		
-		// 循环尝试密码
+
 		found, password := processFile(ctx, archivePath, passwords, mode, progressPrefix, truncatedName)
 
 		if found {
 			foundResult = true
 			result := Result{FilePath: archivePath, Password: password}
-			
-			// 清理行并打印成功信息
 			clearLine()
 			display.PrintSuccess(fmt.Sprintf("%s %s -> 密码: %s", progressPrefix, truncatedName, password))
 			writeResult(resultFile, result)
 		} else {
-			// 失败了，也清理行并打印失败信息
 			clearLine()
 			display.PrintWarning(fmt.Sprintf("%s %s -> 未找到密码或无需密码", progressPrefix, truncatedName))
 		}
 	}
-	
+
 	display.PrintSectionEnd()
 	display.PrintEmptyLine()
 
@@ -91,6 +120,59 @@ func main() {
 		display.PrintWarning("所有任务已完成，但未找到任何密码。")
 	} else {
 		display.PrintSuccess("所有任务已完成。")
+	}
+}
+
+// runExtractor 运行批量解压功能的流程
+func runExtractor(targetPath string) {
+	display.PrintHeader("--- 批量解压器 ---")
+
+	// 1. 显示解压选项菜单
+	extractMode := showExtractorMenu()
+	if extractMode == 0 {
+		display.PrintWarning("未选择解压模式，操作取消。")
+		return
+	}
+
+	// 2. 加载密码和扫描文件
+	_, _, err := prepareTask(targetPath)
+	if err != nil {
+		display.PrintError(fmt.Sprintf("任务准备失败: %v", err))
+		return
+	}
+
+	display.PrintSection("开始解压")
+	// TODO: 实现解压逻辑
+	// 3. 遍历扫描到的 archives 列表
+	// 4. 对每个 archive, 调用一个新的 extractFile 函数
+	//    - extractFile 函数内部会循环 passwords 列表
+	//    - 调用 cracker.Extract 方法进行解压
+	//    - 根据 extractMode 决定解压的目标路径
+	// 5. 打印成功或失败的结果
+	display.PrintWarning("解压核心功能正在开发中，敬请期待！")
+	display.PrintSectionEnd()
+}
+
+// showExtractorMenu 显示解压器子菜单并返回用户的选择
+func showExtractorMenu() int {
+	display.PrintSection("解压选项")
+	display.PrintInfo("1. 解压到当前目录 (所有文件解压到扫描的根目录)")
+	display.PrintInfo("2. 解压到同名文件夹 (每个压缩包解压到与它同名的文件夹内)")
+	display.PrintSectionEnd()
+	display.PrintEmptyLine()
+
+	display.PrintInputPrompt("请选择解压模式 [1-2]: ")
+	reader := bufio.NewReader(os.Stdin)
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+
+	switch choice {
+	case "1":
+		return 1
+	case "2":
+		return 2
+	default:
+		return 0
 	}
 }
 
@@ -103,14 +185,13 @@ func processFile(ctx context.Context, filePath string, passwords []string, mode 
 	}
 
 	for _, password := range passwords {
-		// 动态更新当前行
 		fmt.Printf("\r%s %s 正在尝试: %s", prefix, name, password)
 
 		ok, err := c.TryPassword(ctx, password)
 		if err != nil {
 			clearLine()
 			display.PrintError(fmt.Sprintf("尝试密码时出错 (%s): %v", name, err))
-			return false, "" 
+			return false, ""
 		}
 		if ok {
 			return true, password
@@ -121,12 +202,12 @@ func processFile(ctx context.Context, filePath string, passwords []string, mode 
 
 // --- 辅助函数 ---
 
-func getUserInput() string {
-	display.PrintInputPrompt("请输入压缩包或文件夹的路径 (留空使用当前目录): ")
+func getUserInput(prompt string) string {
+	display.PrintInputPrompt(prompt)
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
-	
+
 	if input == "" {
 		wd, _ := os.Getwd()
 		display.PrintInfo(fmt.Sprintf("使用当前目录: %s", wd))
@@ -208,7 +289,6 @@ func truncateString(s string, num int) string {
 	if len(s) <= num {
 		return s
 	}
-	// 考虑中文字符
 	runes := []rune(s)
 	if len(runes) <= num {
 		return s
