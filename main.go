@@ -1,9 +1,9 @@
 package main
 
 import (
-	"ArchivePwdMatcher/cracker"
-	"ArchivePwdMatcher/display"
-	"ArchivePwdMatcher/utils"
+	"ArchiveTools/cracker"
+	"ArchiveTools/display"
+	"ArchiveTools/utils"
 	"bufio"
 	"context"
 	"fmt"

@@ -1,4 +1,4 @@
-module ArchivePwdMatcher
+module ArchiveTools
 
 go 1.23.0
 

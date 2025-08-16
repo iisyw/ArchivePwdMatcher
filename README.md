@@ -29,7 +29,7 @@
 
     ```bash
     git clone [项目仓库地址]
-    cd ArchivePwdMatcher
+    cd ArchiveTools
     ```
 
 ## 使用方法
@@ -49,7 +49,7 @@
 
         ```bash
         go build .
-        ./ArchivePwdMatcher
+        ./ArchiveTools
         ```
 
 ### 交互流程

@@ -6,3 +6,4 @@
 4. feat: 增加智能解压功能
 5. feat: 增加是否递归扫描子文件夹和是否排除已解压压缩包的选项
 6. docs: 更新README文档，删除UNRAR.exe
+7. chore: 修改项目名从ArchivePwdMatcher改为ArchiveTools

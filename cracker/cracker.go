@@ -1,7 +1,7 @@
 package cracker
 
 import (
-	"ArchivePwdMatcher/config"
+	"ArchiveTools/config"
 	"context"
 	"errors"
 	"fmt"
