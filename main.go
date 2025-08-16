@@ -36,15 +36,18 @@ func main() {
 	// 2. 首先获取用户需要处理的路径
 	targetPath := getUserInput("请输入要处理的压缩包或文件夹路径 (留空使用当前目录): ")
 
-	// 3. 显示主菜单并获取选择
+	// 3. 获取扫描选项
+	scanOptions := showScanOptionsMenu()
+
+	// 4. 显示主菜单并获取选择
 	choice := showMainMenu()
 
-	// 4. 根据选择执行不同的功能
+	// 5. 根据选择执行不同的功能
 	switch choice {
 	case "1":
-		runPasswordMatcher(targetPath)
+		runPasswordMatcher(targetPath, scanOptions)
 	case "2":
-		runExtractor(targetPath)
+		runExtractor(targetPath, scanOptions)
 	default:
 		display.PrintWarning("无效的选择，程序退出。")
 	}
@@ -67,12 +70,34 @@ func showMainMenu() string {
 	return strings.TrimSpace(choice)
 }
 
+// showScanOptionsMenu 显示扫描选项菜单并返回用户的选择
+func showScanOptionsMenu() utils.ScanOptions {
+	display.PrintSection("扫描选项")
+
+	// 询问是否递归
+	display.PrintInputPrompt("是否递归扫描子文件夹? (y/N): ")
+	reader := bufio.NewReader(os.Stdin)
+	recursiveChoice, _ := reader.ReadString('\n')
+	recursive := strings.TrimSpace(strings.ToLower(recursiveChoice)) == "y"
+
+	// 询问是否排除已解压
+	display.PrintInputPrompt("是否排除已解压的压缩包? (Y/n): ")
+	excludeChoice, _ := reader.ReadString('\n')
+	exclude := strings.TrimSpace(strings.ToLower(excludeChoice)) != "n"
+
+	display.PrintSectionEnd()
+	return utils.ScanOptions{
+		Recursive:     recursive,
+		ExcludePacked: exclude,
+	}
+}
+
 // runPasswordMatcher 运行密码匹配功能的完整流程
-func runPasswordMatcher(targetPath string) {
+func runPasswordMatcher(targetPath string, scanOpts utils.ScanOptions) {
 	display.PrintHeader("--- 密码匹配器 ---")
 
 	// 1. 加载密码和扫描文件
-	passwords, archives, err := prepareTask(targetPath)
+	passwords, archives, err := prepareTask(targetPath, scanOpts)
 	if err != nil {
 		display.PrintError(fmt.Sprintf("任务准备失败: %v", err))
 		return
@@ -124,7 +149,7 @@ func runPasswordMatcher(targetPath string) {
 }
 
 // runExtractor 运行批量解压功能的流程
-func runExtractor(targetPath string) {
+func runExtractor(targetPath string, scanOpts utils.ScanOptions) {
 	display.PrintHeader("--- 批量解压器 ---")
 
 	// 1. 显示解压选项菜单
@@ -135,7 +160,7 @@ func runExtractor(targetPath string) {
 	}
 
 	// 2. 加载密码和扫描文件
-	passwords, archives, err := prepareTask(targetPath)
+	passwords, archives, err := prepareTask(targetPath, scanOpts)
 	if err != nil {
 		display.PrintError(fmt.Sprintf("任务准备失败: %v", err))
 		return
@@ -287,7 +312,7 @@ func getUserInput(prompt string) string {
 	return strings.Trim(input, "\"")
 }
 
-func prepareTask(path string) ([]string, []string, error) {
+func prepareTask(path string, scanOpts utils.ScanOptions) ([]string, []string, error) {
 	display.PrintInfo("正在加载密码文件...")
 	passwords, err := utils.LoadPasswords(passwordsFile)
 	if err != nil {
@@ -299,7 +324,7 @@ func prepareTask(path string) ([]string, []string, error) {
 	display.PrintSuccess(fmt.Sprintf("加载了 %d 个唯一密码", len(passwords)))
 
 	display.PrintInfo("正在扫描压缩文件...")
-	archives, err := utils.ScanArchives(path)
+	archives, err := utils.ScanArchives(path, scanOpts)
 	if err != nil {
 		return nil, nil, err
 	}
