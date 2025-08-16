@@ -1,6 +1,7 @@
 package cracker
 
 import (
+	"ArchivePwdMatcher/config"
 	"context"
 	"errors"
 	"fmt"
@@ -8,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"ArchivePwdMatcher/config"
 )
 
 // Mode 定义了破解模式
@@ -25,6 +24,7 @@ const (
 // Cracker 定义了破解器的接口
 type Cracker interface {
 	TryPassword(ctx context.Context, password string) (bool, error)
+	Extract(ctx context.Context, password, destPath string) error
 }
 
 // NewCracker 是一个工厂函数，根据文件类型返回合适的破解器
@@ -56,12 +56,9 @@ func newCommandCracker(filePath string, mode Mode, timeout time.Duration) (Crack
 	switch ext {
 	case ".rar":
 		cmdPath = config.Cfg.UnrarPath
-		// unrar t -p<password> <archive>
-		// 注意参数顺序，密码在前
 		args = []string{"t"}
 	case ".7z", ".zip":
 		cmdPath = config.Cfg.SevenZipPath
-		// 7z t -p<password> <archive>
 		args = []string{"t"}
 	default:
 		return nil, errors.New("内部错误: 不支持的命令行破解类型")
@@ -77,46 +74,68 @@ func newCommandCracker(filePath string, mode Mode, timeout time.Duration) (Crack
 }
 
 func (c *commandCracker) TryPassword(parentCtx context.Context, password string) (bool, error) {
-	// 将密码和文件路径参数附加到 baseArgs
-	// 这样可以正确处理带空格的文件路径
-	fullArgs := append(c.baseArgs, fmt.Sprintf("-p%s", password), c.filePath)
+	fileName := filepath.Base(c.filePath)
+	workDir := filepath.Dir(c.filePath)
+	fullArgs := append(c.baseArgs, fmt.Sprintf("-p%s", password), fileName)
 
 	ctx, cancel := context.WithTimeout(parentCtx, c.timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-
-	// 在 Windows 上隐藏命令行窗口
+	cmd.Dir = workDir // 设置工作目录
 	hideWindow(cmd)
 
-	// 对于快速模式，我们不关心输出，只关心是否超时
 	if c.mode == QuickMode {
 		err := cmd.Run()
 		if ctx.Err() == context.DeadlineExceeded {
-			// 超时被我们视为成功
 			return true, nil
 		}
-		// 如果没有超时就正常结束了，检查是否是密码错误
 		if _, ok := err.(*exec.ExitError); ok {
-			// 对于 unrar 和 7z，密码错误的退出码通常不是 0
-			// 我们假设任何非零退出码都意味着密码错误
-			return false, nil // 密码错误，但不是程序错误
+			return false, nil
 		}
-		// 如果 err 是 nil，说明密码正确
 		return err == nil, err
 	}
 
-	// 对于精确模式，我们等待结果
 	err := cmd.Run()
 	if err == nil {
-		return true, nil // 成功
+		return true, nil
 	}
-
 	if _, ok := err.(*exec.ExitError); ok {
-		// 密码错误，返回 false，但 error 为 nil
 		return false, nil
 	}
-
-	// 其他类型的错误（如命令找不到），作为真实错误返回
 	return false, err
+}
+
+func (c *commandCracker) Extract(ctx context.Context, password, destPath string) error {
+	// 统一使用 7z 进行解压，因为它兼容 rar 且行为更可预测
+	command := config.Cfg.SevenZipPath
+	fileName := filepath.Base(c.filePath)
+	workDir := filepath.Dir(c.filePath)
+
+	// 确保目标路径是绝对路径
+	absDestPath, err := filepath.Abs(destPath)
+	if err != nil {
+		return fmt.Errorf("无法获取绝对目标路径: %w", err)
+	}
+
+	// 7z x <fileName> -p<password> -o<absDestPath> -y
+	args := []string{
+		"x",
+		fileName,
+		fmt.Sprintf("-p%s", password),
+		fmt.Sprintf("-o%s", absDestPath),
+		"-y", // Assume Yes on all queries
+	}
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = workDir // 设置工作目录
+	hideWindow(cmd)
+
+	// 使用 CombinedOutput 来捕获所有输出，以便在出错时提供更详细的信息
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("解压失败: %w\n--- 7z 输出 ---\n%s", err, string(output))
+	}
+
+	return nil
 }

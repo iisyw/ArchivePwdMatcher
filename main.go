@@ -135,22 +135,72 @@ func runExtractor(targetPath string) {
 	}
 
 	// 2. 加载密码和扫描文件
-	_, _, err := prepareTask(targetPath)
+	passwords, archives, err := prepareTask(targetPath)
 	if err != nil {
 		display.PrintError(fmt.Sprintf("任务准备失败: %v", err))
 		return
 	}
 
 	display.PrintSection("开始解压")
-	// TODO: 实现解压逻辑
-	// 3. 遍历扫描到的 archives 列表
-	// 4. 对每个 archive, 调用一个新的 extractFile 函数
-	//    - extractFile 函数内部会循环 passwords 列表
-	//    - 调用 cracker.Extract 方法进行解压
-	//    - 根据 extractMode 决定解压的目标路径
-	// 5. 打印成功或失败的结果
-	display.PrintWarning("解压核心功能正在开发中，敬请期待！")
+	ctx := context.Background()
+	var extractedCount int
+
+	for i, archivePath := range archives {
+		fileName := filepath.Base(archivePath)
+		progressPrefix := fmt.Sprintf("[%03d/%03d]", i+1, len(archives))
+		truncatedName := truncateString(fileName, 40)
+
+		// 尝试用密码本解压
+		success, password, err := extractFile(ctx, archivePath, passwords, extractMode, progressPrefix, truncatedName)
+
+		if success {
+			extractedCount++
+			clearLine()
+			display.PrintSuccess(fmt.Sprintf("%s %s -> 解压成功, 密码: %s", progressPrefix, truncatedName, password))
+		} else {
+			clearLine()
+			display.PrintWarning(fmt.Sprintf("%s %s -> 解压失败", progressPrefix, truncatedName))
+			if err != nil {
+				display.PrintError(fmt.Sprintf("  └─> 错误详情: %v", err))
+			}
+		}
+	}
+
 	display.PrintSectionEnd()
+	display.PrintEmptyLine()
+	display.PrintSuccess(fmt.Sprintf("所有任务已完成，成功解压 %d 个文件。", extractedCount))
+}
+
+// extractFile 尝试用密码列表解压单个文件
+func extractFile(ctx context.Context, filePath string, passwords []string, extractMode int, prefix, name string) (bool, string, error) {
+	// 解压总是使用精确模式，超时时间可以适当放长一些
+	c, err := cracker.NewCracker(filePath, cracker.AccurateMode, time.Hour)
+	if err != nil {
+		return false, "", fmt.Errorf("创建解压器失败: %w", err)
+	}
+
+	// 确定输出目录
+	var destPath string
+	if extractMode == 1 { // 解压到当前目录
+		destPath = filepath.Dir(filePath)
+	} else { // 解压到同名文件夹
+		ext := filepath.Ext(filePath)
+		destPath = filepath.Join(filepath.Dir(filePath), strings.TrimSuffix(filepath.Base(filePath), ext))
+	}
+
+	// 尝试密码
+	var lastErr error
+	for _, password := range passwords {
+		fmt.Printf("\r%s %s 正在尝试密码: %s", prefix, name, password)
+		err := c.Extract(ctx, password, destPath)
+		if err == nil {
+			// 如果没有错误，说明密码正确并且解压成功
+			return true, password, nil
+		}
+		lastErr = err
+	}
+
+	return false, "", lastErr
 }
 
 // showExtractorMenu 显示解压器子菜单并返回用户的选择
