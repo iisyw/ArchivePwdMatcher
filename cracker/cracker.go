@@ -53,13 +53,13 @@ func newCommandCracker(filePath string, mode Mode, timeout time.Duration) (Crack
 	var cmdPath string
 	var args []string
 
+	// 统一使用 7z 来处理所有支持的格式
+	cmdPath = config.Cfg.SevenZipPath
+	args = []string{"t"}
+
 	switch ext {
-	case ".rar":
-		cmdPath = config.Cfg.UnrarPath
-		args = []string{"t"}
-	case ".7z", ".zip":
-		cmdPath = config.Cfg.SevenZipPath
-		args = []string{"t"}
+	case ".rar", ".7z", ".zip":
+		// 所有支持的类型都使用相同的命令和参数
 	default:
 		return nil, errors.New("内部错误: 不支持的命令行破解类型")
 	}

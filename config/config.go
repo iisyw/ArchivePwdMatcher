@@ -9,7 +9,6 @@ import (
 // AppConfig 保存应用程序的全局配置
 type AppConfig struct {
 	SevenZipPath string
-	UnrarPath    string
 }
 
 // Cfg 是全局唯一的配置实例
@@ -18,17 +17,18 @@ var Cfg *AppConfig
 func init() {
 	Cfg = &AppConfig{
 		SevenZipPath: findExecutable("7z", "7za"),
-		UnrarPath:    findExecutable("unrar", ""),
 	}
 }
 
 // findExecutable 优先在程序工作目录查找，然后才依赖系统 PATH
 func findExecutable(baseName, fallbackName string) string {
-	// 1. 获取当前工作目录
-	workDir, err := os.Getwd()
+	// 1. 获取当前可执行文件所在的目录
+	exePath, err := os.Executable()
 	if err != nil {
-		return addExeSuffix(baseName) // 获取失败则回退
+		// 如果获取失败，回退到只使用 baseName，依赖系统 PATH
+		return addExeSuffix(baseName)
 	}
+	workDir := filepath.Dir(exePath)
 
 	// 2. 尝试在工作目录查找主名称 (e.g., 7z.exe)
 	searchPath := filepath.Join(workDir, addExeSuffix(baseName))
