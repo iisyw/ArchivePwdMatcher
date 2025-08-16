@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ const (
 type Cracker interface {
 	TryPassword(ctx context.Context, password string) (bool, error)
 	Extract(ctx context.Context, password, destPath string) error
+	ListRootItems(ctx context.Context, password string) ([]string, error)
 }
 
 // NewCracker 是一个工厂函数，根据文件类型返回合适的破解器
@@ -138,4 +140,61 @@ func (c *commandCracker) Extract(ctx context.Context, password, destPath string)
 	}
 
 	return nil
+}
+
+func (c *commandCracker) ListRootItems(ctx context.Context, password string) ([]string, error) {
+	command := config.Cfg.SevenZipPath
+	fileName := filepath.Base(c.filePath)
+	workDir := filepath.Dir(c.filePath)
+
+	// 7z l <fileName> -p<password>
+	args := []string{"l", fileName, fmt.Sprintf("-p%s", password)}
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = workDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// 如果返回错误，但输出中包含 "Wrong password"，则返回一个特定的错误类型
+		if strings.Contains(string(output), "Wrong password") {
+			return nil, errors.New("wrong password")
+		}
+		return nil, fmt.Errorf("无法列出文件: %w\n--- 7z 输出 ---\n%s", err, string(output))
+	}
+
+	// --- 解析 7z 输出 ---
+	// 7z l 的输出格式大致如下:
+	// ... (header info)
+	// ------------------- ----- ------------ ------------  ------------------------
+	// 2025-08-16 16:00:00 D....            0            0  FolderName
+	// 2025-08-16 16:00:00 .....        12345        54321  FolderName\file1.txt
+	// 2025-08-16 16:00:00 .....         6789         9876  file2.txt
+	// ------------------- ----- ------------ ------------  ------------------------
+	// ... (footer info)
+
+	lines := strings.Split(string(output), "\n")
+	var items []string
+	var dataSection bool
+	separator := "-------------------"
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, separator) {
+			dataSection = !dataSection
+			continue
+		}
+		if dataSection {
+			// 找到最后一个空格，之后的内容就是文件名/路径
+			lastSpaceIndex := strings.LastIndex(line, "  ")
+			if lastSpaceIndex > 0 && len(line) > lastSpaceIndex+2 {
+				itemPath := strings.TrimSpace(line[lastSpaceIndex+2:])
+				// 我们只关心根目录下的项目
+				// 不包含 '\' 或 '/' 的就是根目录项目
+				if !strings.Contains(itemPath, string(os.PathSeparator)) {
+					items = append(items, itemPath)
+				}
+			}
+		}
+	}
+
+	return items, nil
 }

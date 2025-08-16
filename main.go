@@ -173,28 +173,46 @@ func runExtractor(targetPath string) {
 
 // extractFile 尝试用密码列表解压单个文件
 func extractFile(ctx context.Context, filePath string, passwords []string, extractMode int, prefix, name string) (bool, string, error) {
-	// 解压总是使用精确模式，超时时间可以适当放长一些
 	c, err := cracker.NewCracker(filePath, cracker.AccurateMode, time.Hour)
 	if err != nil {
 		return false, "", fmt.Errorf("创建解压器失败: %w", err)
 	}
 
-	// 确定输出目录
-	var destPath string
-	if extractMode == 1 { // 解压到当前目录
-		destPath = filepath.Dir(filePath)
-	} else { // 解压到同名文件夹
-		ext := filepath.Ext(filePath)
-		destPath = filepath.Join(filepath.Dir(filePath), strings.TrimSuffix(filepath.Base(filePath), ext))
-	}
-
-	// 尝试密码
 	var lastErr error
 	for _, password := range passwords {
 		fmt.Printf("\r%s %s 正在尝试密码: %s", prefix, name, password)
+
+		finalExtractMode := extractMode
+		// 如果是智能模式，需要先检查文件列表来决定最终模式
+		if extractMode == 1 { // 1 是智能模式
+			rootItems, listErr := c.ListRootItems(ctx, password)
+			if listErr != nil {
+				// 如果列表失败（可能是密码错误），则继续尝试下一个密码
+				lastErr = listErr
+				continue
+			}
+
+			// 智能判断逻辑
+			archiveNameNoExt := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+			// 检查根目录下是否只有一个项目，并且该项目的名称与压缩包名称（不含扩展名）相同
+			if len(rootItems) == 1 && rootItems[0] == archiveNameNoExt {
+				finalExtractMode = 2 // 判定为：应该解压到当前目录
+			} else {
+				finalExtractMode = 3 // 其他所有情况，都解压到同名文件夹
+			}
+		}
+
+		// 确定输出目录
+		var destPath string
+		if finalExtractMode == 2 { // 解压到当前目录
+			destPath = filepath.Dir(filePath)
+		} else { // 解压到同名文件夹 (模式3 和 智能模式的默认情况)
+			ext := filepath.Ext(filePath)
+			destPath = filepath.Join(filepath.Dir(filePath), strings.TrimSuffix(filepath.Base(filePath), ext))
+		}
+
 		err := c.Extract(ctx, password, destPath)
 		if err == nil {
-			// 如果没有错误，说明密码正确并且解压成功
 			return true, password, nil
 		}
 		lastErr = err
@@ -206,21 +224,24 @@ func extractFile(ctx context.Context, filePath string, passwords []string, extra
 // showExtractorMenu 显示解压器子菜单并返回用户的选择
 func showExtractorMenu() int {
 	display.PrintSection("解压选项")
-	display.PrintInfo("1. 解压到当前目录 (所有文件解压到扫描的根目录)")
-	display.PrintInfo("2. 解压到同名文件夹 (每个压缩包解压到与它同名的文件夹内)")
+	display.PrintInfo("1. 智能解压 (推荐)")
+	display.PrintInfo("2. 解压到当前目录")
+	display.PrintInfo("3. 解压到同名文件夹")
 	display.PrintSectionEnd()
 	display.PrintEmptyLine()
 
-	display.PrintInputPrompt("请选择解压模式 [1-2]: ")
+	display.PrintInputPrompt("请选择解压模式 [默认为1]: ")
 	reader := bufio.NewReader(os.Stdin)
 	choice, _ := reader.ReadString('\n')
 	choice = strings.TrimSpace(choice)
 
 	switch choice {
-	case "1":
-		return 1
 	case "2":
 		return 2
+	case "3":
+		return 3
+	case "1", "": // 默认选项
+		return 1
 	default:
 		return 0
 	}
